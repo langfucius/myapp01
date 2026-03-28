@@ -4,7 +4,11 @@ import sys
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-plt.rcParams['font.sans-serif'] = ['SimHei']
+import matplotlib.font_manager as fm
+try:
+    plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei', 'DejaVu Sans']
+except:
+    pass
 plt.rcParams['axes.unicode_minus'] = False
 
 from utils.data_loader import load_data_csv, load_data_excel
