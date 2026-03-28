@@ -18,6 +18,8 @@ fm.fontManager.addfont(font_path)
 plt.rcParams['font.family'] = 'Source Han Sans SC'
 plt.rcParams['axes.unicode_minus'] = False
 
+from datetime import datetime
+import pytz
 from utils.data_loader import load_data_csv, load_data_excel
 from utils.data_cleaning import (
     clean_data,
@@ -112,9 +114,27 @@ def main():
     # 页面配置
     st.set_page_config(page_title="Mini ML App", layout="wide")
 
+
+# 北京时间5月17日祝福
+
+
     st.title("Mini ML Lab")
+    beijing_tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now(beijing_tz)
+    if now.month == 5 and now.day == 17:
+        st.balloons()
+        st.success(f"5月17日生日快乐！")
+        st.info("愿星辰指引你的方向，愿未来如你所愿，二十岁生日快乐呀!-- 献给User 0")
+        st.info("I will come.")
+        st.snow()
     st.write("The best ot data times, the worst of data times.--Tinpot author")
-    st.write("The stars must be aligned tonight.--Passenger 0")
+    st.write("The stars must be aligned tonight.--User 0")
+    st.write("今夜星辰必须对齐。——用户0")
+    st.write("Las estrellas deben estar alineadas esta noche.--Usuario 0")
+    st.write("0يجب أن تكون النجوم متحاذية الليلة.--المستخدم")
+    st.write("Звёзды должны выровняться этой ночью.--Пользователь 0")
+    st.write("Les étoiles doivent être alignées ce soir.--Utilisateur 0")
+    
     st.write("Thanks for MYF and the lazy Lang")
 
     # ======================
