@@ -5,10 +5,17 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-try:
-    plt.rcParams['font.sans-serif'] = ['WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei', 'DejaVu Sans']
-except:
-    pass
+import os
+
+font_url = "https://github.com/adobe-fonts/source-han-sans/raw/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf"
+font_path = "SourceHanSansSC-Regular.otf"
+
+if not os.path.exists(font_path):
+    import urllib.request
+    urllib.request.urlretrieve(font_url, font_path)
+
+fm.fontManager.addfont(font_path)
+plt.rcParams['font.family'] = 'Source Han Sans SC'
 plt.rcParams['axes.unicode_minus'] = False
 
 from utils.data_loader import load_data_csv, load_data_excel
