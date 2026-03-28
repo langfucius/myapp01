@@ -4,6 +4,8 @@ import sys
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+plt.rcParams['font.sans-serif'] = ['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
 
 from utils.data_loader import load_data_csv, load_data_excel
 from utils.data_cleaning import (
