@@ -123,13 +123,19 @@ def main():
     now = datetime.now(beijing_tz)
     if now.month == 5 and now.day == 17:
         st.balloons()
-        st.success(f"5月17日生日快乐！")
+        
+        # 播放本地生日歌
+        with open("birthday.mp3", "rb") as f:
+            audio_bytes = f.read()
+        st.audio(audio_bytes, format="audio/mp3", autoplay=True, loop=True)
+        
+        st.success("5月17日生日快乐！")
         st.info("愿星辰指引你的方向，愿未来如你所愿，二十岁生日快乐呀!-- 献给User 0")
         st.info("I will come.")
         st.snow()
     st.write("The best ot data times, the worst of data times.--Tinpot author")
     st.write("The stars must be aligned tonight.--User 0")
-    st.write("今夜星辰必须对齐。——用户0")
+    st.write("星光今夜交相辉映。——用户0")
     st.write("Las estrellas deben estar alineadas esta noche.--Usuario 0")
     st.write("0يجب أن تكون النجوم متحاذية الليلة.--المستخدم")
     st.write("Звёзды должны выровняться этой ночью.--Пользователь 0")
