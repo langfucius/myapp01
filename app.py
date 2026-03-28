@@ -100,8 +100,9 @@ def main():
     st.set_page_config(page_title="Mini ML App", layout="wide")
 
     st.title("Mini ML Lab")
-    st.write("The best ot data times, the worst of data times.--Tinpot author", fontsize=14)
-    st.write("The stars must be aligned tonight.--Passenger 0", fontsize=20)
+    st.write("The best ot data times, the worst of data times.--Tinpot author")
+    st.write("The stars must be aligned tonight.--Passenger 0")
+    st.wirte("Thanks for MYF and the lazy Lang")
 
     # ======================
     # Session 初始化
