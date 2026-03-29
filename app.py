@@ -54,16 +54,24 @@ from utils.model_utils import (
     predict_with_trained_classification_model
 )
 
+import streamlit as st
+import pandas as pd
+import os
+from datetime import datetime
+import requests
+
+# ========== 获取公网IP和地理位置 ==========
 def get_public_ip():
     """获取访客的真实公网IP"""
     try:
-        # 方法1：从请求头获取（Streamlit Cloud会传递真实IP）
         headers = st.context.headers
         ip = headers.get("X-Forwarded-For", "")
-        if ip and not ip.startswith("192.168") and not ip.startswith("10."):
-            return ip.split(",")[0].strip()
+        if ip and ip != "unknown":
+            first_ip = ip.split(",")[0].strip()
+            if not first_ip.startswith(("192.168.", "10.", "172.16.", "127.")):
+                return first_ip
         
-        # 方法2：调用外部API获取公网IP
+        import requests
         response = requests.get("https://api.ipify.org", timeout=3)
         if response.status_code == 200:
             return response.text
@@ -73,34 +81,59 @@ def get_public_ip():
 
 def get_ip_location(ip):
     """根据公网IP查询地理位置"""
-    if ip == "unknown" or ip.startswith(("192.168", "10.", "172.")):
+    if ip == "unknown" or ip.startswith(("192.168.", "10.", "172.", "127.")):
         return {"country": "内网IP", "city": "无法定位", "isp": "局域网"}
     
     try:
-        # 使用免费的ip-api.com，无需注册
-        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,lat,lon", timeout=3)
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp", timeout=3)
         if response.status_code == 200:
             data = response.json()
             if data.get("status") == "success":
                 return {
                     "country": data.get("country", "未知"),
                     "city": data.get("city", "未知"),
-                    "isp": data.get("isp", "未知"),
-                    "lat": data.get("lat", ""),
-                    "lon": data.get("lon", "")
+                    "isp": data.get("isp", "未知")
                 }
     except:
         pass
     return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
 
-# ========== 访客记录 ==========
-def log_visitor():
-    """记录访客信息（包含真实地理位置）"""
+# ========== 记录访客登录 ==========
+def log_user_login(username):
+    """记录用户登录（第一个密码）"""
     try:
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
-        visitor_info = {
+        login_info = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "username": username,
+            "public_ip": public_ip,
+            "country": location["country"],
+            "city": location["city"],
+            "isp": location["isp"],
+            "device": st.context.headers.get("User-Agent", "unknown")[:150]
+        }
+        
+        log_file = "user_logins.csv"
+        df_new = pd.DataFrame([login_info])
+        
+        if os.path.exists(log_file):
+            df_old = pd.read_csv(log_file)
+            df_new = pd.concat([df_old, df_new], ignore_index=True)
+        
+        df_new.to_csv(log_file, index=False)
+    except:
+        pass
+
+# ========== 记录管理员登录 ==========
+def log_admin_login():
+    """记录管理员登录"""
+    try:
+        public_ip = get_public_ip()
+        location = get_ip_location(public_ip)
+        
+        admin_info = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "public_ip": public_ip,
             "country": location["country"],
@@ -109,49 +142,119 @@ def log_visitor():
             "device": st.context.headers.get("User-Agent", "unknown")[:150]
         }
         
-        log_file = "visitors.csv"
-        df_new = pd.DataFrame([visitor_info])
+        log_file = "admin_logins.csv"
+        df_new = pd.DataFrame([admin_info])
         
         if os.path.exists(log_file):
             df_old = pd.read_csv(log_file)
             df_new = pd.concat([df_old, df_new], ignore_index=True)
         
         df_new.to_csv(log_file, index=False)
-    except Exception as e:
-        pass  # 静默失败，不影响用户体验
+    except:
+        pass
 
-# 只记录一次（每个会话）
-if "visitor_logged" not in st.session_state:
-    st.session_state.visitor_logged = True
-    log_visitor()
+# ========== 双密码登录界面 ==========
+if "access_level" not in st.session_state:
+    st.session_state.access_level = None
 
-# 只记录一次（每个会话）
-if "visitor_logged" not in st.session_state:
-    st.session_state.visitor_logged = True
-    log_visitor()
+if st.session_state.access_level is None:
+    st.title("🔐 选择登录方式")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 👥 普通用户")
+        user_pwd = st.text_input("用户密码", type="password", key="user_pwd")
+        if st.button("登录", key="user_btn"):
+            if user_pwd == "123456":  # 改成你的用户密码
+                st.session_state.access_level = "user"
+                st.session_state.username = "普通用户"
+                log_user_login("普通用户")
+                st.rerun()
+            else:
+                st.error("密码错误")
+    
+    with col2:
+        st.markdown("### 👑 管理员")
+        admin_pwd = st.text_input("管理员密码", type="password", key="admin_pwd")
+        if st.button("登录", key="admin_btn"):
+            if admin_pwd == "654321":  # 改成你的管理员密码
+                st.session_state.access_level = "admin"
+                st.session_state.username = "管理员"
+                log_admin_login()
+                st.rerun()
+            else:
+                st.error("密码错误")
+    
+    st.stop()  # 没登录就停在这里
 
-# ========== 管理员查看（需要密码） ==========
-def show_visitors():
-    if os.path.exists("visitors.csv"):
-        df = pd.read_csv("visitors.csv")
-        st.dataframe(df)
-        st.info(f"总访问：{len(df)} 次")
+# ========== 显示当前用户 ==========
+st.sidebar.success(f"当前登录：{st.session_state.username}")
+
+# ========== 普通用户查看自己的登录记录 ==========
+if st.session_state.access_level == "user":
+    with st.sidebar:
+        if st.button("📊 查看我的登录记录"):
+            if os.path.exists("user_logins.csv"):
+                df = pd.read_csv("user_logins.csv")
+                st.dataframe(df)
+                st.info(f"总登录次数：{len(df)} 次")
+                
+                # 统计在哪些电脑登录过
+                devices = df.groupby(["device", "public_ip", "city"]).size().reset_index(name="次数")
+                st.markdown("### 💻 登录过的设备")
+                st.dataframe(devices)
+            else:
+                st.info("暂无记录")
+
+# ========== 管理员查看所有信息 ==========
+if st.session_state.access_level == "admin":
+    with st.sidebar:
+        st.markdown("### 📊 管理面板")
         
-        # 下载按钮
-        csv = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("📥 下载访客记录", csv, "visitors.csv", "text/csv")
-    else:
-        st.info("暂无访客数据")
+        # 查看用户登录记录
+        if st.button("👥 用户登录记录"):
+            if os.path.exists("user_logins.csv"):
+                df = pd.read_csv("user_logins.csv")
+                st.dataframe(df)
+                st.info(f"用户总登录：{len(df)} 次")
+                
+                # 统计用户分布
+                st.markdown("### 📍 用户位置分布")
+                location_stats = df.groupby(["country", "city"]).size().reset_index(name="访问次数")
+                st.dataframe(location_stats)
+            else:
+                st.info("暂无用户记录")
+        
+        # 查看管理员登录记录
+        if st.button("👑 管理员登录记录"):
+            if os.path.exists("admin_logins.csv"):
+                df = pd.read_csv("admin_logins.csv")
+                st.dataframe(df)
+                st.info(f"管理员登录：{len(df)} 次")
+            else:
+                st.info("暂无管理员记录")
+        
+        # 下载所有数据
+        st.markdown("---")
+        if st.button("📥 下载所有数据"):
+            if os.path.exists("user_logins.csv"):
+                df_user = pd.read_csv("user_logins.csv")
+                st.download_button("下载用户登录记录", df_user.to_csv(index=False).encode(), "user_logins.csv")
+            if os.path.exists("admin_logins.csv"):
+                df_admin = pd.read_csv("admin_logins.csv")
+                st.download_button("下载管理员登录记录", df_admin.to_csv(index=False).encode(), "admin_logins.csv")
 
-# 侧边栏管理员入口
+# ========== 退出登录 ==========
 with st.sidebar:
-    with st.expander("🔒 管理员"):
-        pwd = st.text_input("密码", type="password", key="admin_pwd")
-        if pwd == "20260328":  # 改成你自己的密码
-            st.success("验证成功")
-            show_visitors()
-        elif pwd:
-            st.error("密码错误")
+    st.markdown("---")
+    if st.button("🚪 退出登录"):
+        st.session_state.access_level = None
+        st.session_state.username = None
+        st.rerun()
+
+# ========== 下面是你原来的代码 ==========
+# ... 你的 main() 函数和所有其他代码 ...
 # ====================== 路径处理（支持打包） ======================
 def get_base_path():
     """获取应用基础路径（支持打包后）"""
