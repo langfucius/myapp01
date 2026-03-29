@@ -57,56 +57,37 @@ from datetime import datetime
 import requests
 
 # ========== 1. 通过前端JavaScript获取真实的设备信息 ==========
-def get_device_info():
-    """通过注入JavaScript获取客户端的真实User-Agent"""
-    # 使用session_state来存储，避免重复获取
-    if 'user_agent' not in st.session_state:
-        # 注入一段JS代码，它将User-Agent通过URL参数传回
-        js_code = """
-        <script>
-            const userAgent = navigator.userAgent;
-            const url = new URL(window.location.href);
-            url.searchParams.set('ua', userAgent);
-            window.location.href = url.toString();
-        </script>
-        """
-        # 渲染组件（不显示任何内容）
-        st.components.v1.html(js_code, height=0)
-        return "pending"  # 返回一个临时状态
-    
-    # 从URL参数中读取传回的User-Agent
-    query_params = st.experimental_get_query_params()
-    return query_params.get("ua", ["unknown"])[0]
-
-# ========== 2. 获取公网IP（完全不依赖headers） ==========
 def get_public_ip():
-    """通过外部API获取真实的公网IP"""
-    # 优先使用ipify，它专门用于获取IP，非常稳定
+    """通过外部API获取公网IP - 最可靠的方法"""
+    # 方法1：ipify（最稳定）
     try:
         response = requests.get("https://api.ipify.org", timeout=5)
         if response.status_code == 200:
-            return response.text.strip()
+            ip = response.text.strip()
+            if ip and ip != "unknown":
+                return ip
     except:
         pass
     
-    # 备用方案：使用ip-api获取IP
+    # 方法2：ip-api备用
     try:
         response = requests.get("http://ip-api.com/json/?fields=query", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            return data.get("query", "unknown")
+            ip = data.get("query", "")
+            if ip:
+                return ip
     except:
         pass
-        
+    
     return "unknown"
 
-# ========== 3. 获取IP地理位置（不变，但可以优化） ==========
+# ========== 2. 获取地理位置 ==========
 def get_ip_location(ip):
     if ip == "unknown" or ip.startswith(("192.168.", "10.", "172.", "127.")):
         return {"country": "内网IP", "city": "无法定位", "isp": "局域网"}
     
     try:
-        # ip-api.com 免费且无需API key
         response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp", timeout=5)
         if response.status_code == 200:
             data = response.json()
@@ -120,17 +101,44 @@ def get_ip_location(ip):
         pass
     return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
 
-# ========== 4. 记录访客信息（整合以上功能） ==========
+# ========== 3. 获取设备信息（通过前端JavaScript） ==========
+def get_device_info():
+    """通过URL参数获取真实的User-Agent"""
+    # 检查是否已经有设备信息
+    if "user_agent" in st.session_state:
+        return st.session_state.user_agent
+    
+    # 检查URL参数中是否有ua
+    query_params = st.query_params
+    if "ua" in query_params:
+        ua = query_params["ua"]
+        st.session_state.user_agent = ua
+        # 清除URL参数，避免刷新时重复
+        st.query_params.clear()
+        return ua
+    
+    # 如果没有，注入JS获取
+    js_code = """
+    <script>
+        const userAgent = navigator.userAgent;
+        const url = new URL(window.location.href);
+        url.searchParams.set('ua', userAgent);
+        window.location.href = url.toString();
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
+    return "pending"
+
+# ========== 4. 记录普通访客 ==========
 def log_visitor():
-    """记录普通访客：IP、设备、地址"""
+    """记录普通访客"""
     try:
-        # 获取设备（User-Agent）
+        # 获取设备信息（可能返回pending）
         device = get_device_info()
-        # 如果还在获取中，则本次不记录，等待下次页面刷新
         if device == "pending":
-            return
+            return  # 等待页面刷新后重新记录
         
-        # 获取IP和地理位置
+        # 获取IP和位置
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
@@ -141,7 +149,7 @@ def log_visitor():
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": device[:150]  # 完整的User-Agent
+            "device": device[:200]  # User-Agent
         }
         
         # 保存到CSV
@@ -153,19 +161,19 @@ def log_visitor():
             df_new = pd.concat([df_old, df_new], ignore_index=True)
         
         df_new.to_csv(log_file, index=False)
+        
     except Exception as e:
-        # 生产环境中可以记录错误日志，但不要让用户看到
-        # print(f"Logging error: {e}")
+        # 静默失败，不影响用户体验
         pass
 
-# ========== 记录管理员登录 ==========
+# ========== 5. 记录管理员登录 ==========
 def log_admin(level):
-    """记录管理员登录，逻辑类似"""
+    """记录管理员登录"""
     try:
         device = get_device_info()
         if device == "pending":
             return
-            
+        
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
@@ -176,7 +184,7 @@ def log_admin(level):
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": device[:150]
+            "device": device[:200]
         }
         
         log_file = "admin_logins.csv"
