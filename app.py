@@ -364,6 +364,7 @@ def main():
     # 设置 matplotlib 字体
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
+    st.title("Mini ML Lab")
     show_birthday_surprise()
     # 页面配置
     st.set_page_config(page_title="Mini ML App", layout="wide")
