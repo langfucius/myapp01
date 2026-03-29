@@ -5,7 +5,6 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-import os
 
 font_url = "https://github.com/adobe-fonts/source-han-sans/raw/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf"
 font_path = "SourceHanSansSC-Regular.otf"
@@ -54,32 +53,61 @@ from utils.model_utils import (
     predict_with_trained_classification_model
 )
 
-import streamlit as st
-import pandas as pd
-import os
 from datetime import datetime
 import requests
-# ========== 获取公网IP和地理位置 ==========
+
+# ========== 1. 通过前端JavaScript获取真实的设备信息 ==========
+def get_device_info():
+    """通过注入JavaScript获取客户端的真实User-Agent"""
+    # 使用session_state来存储，避免重复获取
+    if 'user_agent' not in st.session_state:
+        # 注入一段JS代码，它将User-Agent通过URL参数传回
+        js_code = """
+        <script>
+            const userAgent = navigator.userAgent;
+            const url = new URL(window.location.href);
+            url.searchParams.set('ua', userAgent);
+            window.location.href = url.toString();
+        </script>
+        """
+        # 渲染组件（不显示任何内容）
+        st.components.v1.html(js_code, height=0)
+        return "pending"  # 返回一个临时状态
+    
+    # 从URL参数中读取传回的User-Agent
+    query_params = st.experimental_get_query_params()
+    return query_params.get("ua", ["unknown"])[0]
+
+# ========== 2. 获取公网IP（完全不依赖headers） ==========
 def get_public_ip():
+    """通过外部API获取真实的公网IP"""
+    # 优先使用ipify，它专门用于获取IP，非常稳定
     try:
-        headers = st.context.headers
-        ip = headers.get("X-Forwarded-For", "")
-        if ip and ip != "unknown":
-            first_ip = ip.split(",")[0].strip()
-            if not first_ip.startswith(("192.168.", "10.", "172.16.", "127.")):
-                return first_ip
-        response = requests.get("https://api.ipify.org", timeout=3)
+        response = requests.get("https://api.ipify.org", timeout=5)
         if response.status_code == 200:
-            return response.text
+            return response.text.strip()
     except:
         pass
+    
+    # 备用方案：使用ip-api获取IP
+    try:
+        response = requests.get("http://ip-api.com/json/?fields=query", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("query", "unknown")
+    except:
+        pass
+        
     return "unknown"
 
+# ========== 3. 获取IP地理位置（不变，但可以优化） ==========
 def get_ip_location(ip):
     if ip == "unknown" or ip.startswith(("192.168.", "10.", "172.", "127.")):
         return {"country": "内网IP", "city": "无法定位", "isp": "局域网"}
+    
     try:
-        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp", timeout=3)
+        # ip-api.com 免费且无需API key
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp", timeout=5)
         if response.status_code == 200:
             data = response.json()
             if data.get("status") == "success":
@@ -92,10 +120,17 @@ def get_ip_location(ip):
         pass
     return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
 
-# ========== 记录普通访客 ==========
+# ========== 4. 记录访客信息（整合以上功能） ==========
 def log_visitor():
-    """记录普通访客（不需要密码）"""
+    """记录普通访客：IP、设备、地址"""
     try:
+        # 获取设备（User-Agent）
+        device = get_device_info()
+        # 如果还在获取中，则本次不记录，等待下次页面刷新
+        if device == "pending":
+            return
+        
+        # 获取IP和地理位置
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
@@ -106,9 +141,10 @@ def log_visitor():
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": st.context.headers.get("User-Agent", "unknown")[:150]
+            "device": device[:150]  # 完整的User-Agent
         }
         
+        # 保存到CSV
         log_file = "visitors.csv"
         df_new = pd.DataFrame([visitor_info])
         
@@ -117,13 +153,19 @@ def log_visitor():
             df_new = pd.concat([df_old, df_new], ignore_index=True)
         
         df_new.to_csv(log_file, index=False)
-    except:
+    except Exception as e:
+        # 生产环境中可以记录错误日志，但不要让用户看到
+        # print(f"Logging error: {e}")
         pass
 
 # ========== 记录管理员登录 ==========
 def log_admin(level):
-    """记录管理员登录"""
+    """记录管理员登录，逻辑类似"""
     try:
+        device = get_device_info()
+        if device == "pending":
+            return
+            
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
@@ -134,10 +176,10 @@ def log_admin(level):
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": st.context.headers.get("User-Agent", "unknown")[:150]
+            "device": device[:150]
         }
         
-        log_file = "admin_logins.csv"  # 单独记录管理员登录
+        log_file = "admin_logins.csv"
         df_new = pd.DataFrame([admin_info])
         
         if os.path.exists(log_file):
@@ -148,10 +190,12 @@ def log_admin(level):
     except:
         pass
 
-# ========== 普通访客自动记录 ==========
+# ========== 主程序：普通访客自动记录 ==========
+# 使用session_state确保每次会话只记录一次
 if "visitor_logged" not in st.session_state:
     st.session_state.visitor_logged = True
     log_visitor()
+
 
 # ========== 管理员登录入口（侧边栏） ==========
 KEY_A = "1117"   # 密钥A：普通管理权限（只能看普通访客）
