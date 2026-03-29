@@ -59,10 +59,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import requests
-
-# ========== 获取公网IP和地理位置 ==========
 def get_public_ip():
-    """获取访客的真实公网IP"""
     try:
         headers = st.context.headers
         ip = headers.get("X-Forwarded-For", "")
@@ -70,8 +67,6 @@ def get_public_ip():
             first_ip = ip.split(",")[0].strip()
             if not first_ip.startswith(("192.168.", "10.", "172.16.", "127.")):
                 return first_ip
-        
-        import requests
         response = requests.get("https://api.ipify.org", timeout=3)
         if response.status_code == 200:
             return response.text
@@ -80,10 +75,8 @@ def get_public_ip():
     return "unknown"
 
 def get_ip_location(ip):
-    """根据公网IP查询地理位置"""
     if ip == "unknown" or ip.startswith(("192.168.", "10.", "172.", "127.")):
         return {"country": "内网IP", "city": "无法定位", "isp": "局域网"}
-    
     try:
         response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp", timeout=3)
         if response.status_code == 200:
@@ -98,16 +91,16 @@ def get_ip_location(ip):
         pass
     return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
 
-# ========== 记录访客登录 ==========
-def log_user_login(username):
-    """记录用户登录（第一个密码）"""
+# ========== 记录登录 ==========
+def log_login(level):
+    """记录管理员登录"""
     try:
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
         login_info = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "username": username,
+            "level": level,  # A 或 B
             "public_ip": public_ip,
             "country": location["country"],
             "city": location["city"],
@@ -115,7 +108,7 @@ def log_user_login(username):
             "device": st.context.headers.get("User-Agent", "unknown")[:150]
         }
         
-        log_file = "user_logins.csv"
+        log_file = "admin_logins.csv"
         df_new = pd.DataFrame([login_info])
         
         if os.path.exists(log_file):
@@ -126,132 +119,97 @@ def log_user_login(username):
     except:
         pass
 
-# ========== 记录管理员登录 ==========
-def log_admin_login():
-    """记录管理员登录"""
-    try:
-        public_ip = get_public_ip()
-        location = get_ip_location(public_ip)
-        
-        admin_info = {
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "public_ip": public_ip,
-            "country": location["country"],
-            "city": location["city"],
-            "isp": location["isp"],
-            "device": st.context.headers.get("User-Agent", "unknown")[:150]
-        }
-        
-        log_file = "admin_logins.csv"
-        df_new = pd.DataFrame([admin_info])
-        
-        if os.path.exists(log_file):
-            df_old = pd.read_csv(log_file)
-            df_new = pd.concat([df_old, df_new], ignore_index=True)
-        
-        df_new.to_csv(log_file, index=False)
-    except:
-        pass
+# ========== 登录界面 ==========
+KEY_A = "123456"   # 密钥A：普通权限
+KEY_B = "654321"   # 密钥B：高级权限（能看到管理员自己的登录记录）
 
-# ========== 双密码登录界面 ==========
-if "access_level" not in st.session_state:
-    st.session_state.access_level = None
+if "admin_level" not in st.session_state:
+    st.session_state.admin_level = None
 
-if st.session_state.access_level is None:
-    st.title("🔐 选择登录方式")
+if st.session_state.admin_level is None:
+    st.title("🔐 管理员登录")
     
-    col1, col2 = st.columns(2)
+    pwd = st.text_input("请输入密钥", type="password")
     
-    with col1:
-        st.markdown("### 👥 普通用户")
-        user_pwd = st.text_input("用户密码", type="password", key="user_pwd")
-        if st.button("登录", key="user_btn"):
-            if user_pwd == "123456":  # 改成你的用户密码
-                st.session_state.access_level = "user"
-                st.session_state.username = "普通用户"
-                log_user_login("普通用户")
-                st.rerun()
-            else:
-                st.error("密码错误")
+    if st.button("登录"):
+        if pwd == KEY_A:
+            st.session_state.admin_level = "A"
+            log_login("A")
+            st.rerun()
+        elif pwd == KEY_B:
+            st.session_state.admin_level = "B"
+            log_login("B")
+            st.rerun()
+        elif pwd:
+            st.error("密钥错误")
     
-    with col2:
-        st.markdown("### 👑 管理员")
-        admin_pwd = st.text_input("管理员密码", type="password", key="admin_pwd")
-        if st.button("登录", key="admin_btn"):
-            if admin_pwd == "654321":  # 改成你的管理员密码
-                st.session_state.access_level = "admin"
-                st.session_state.username = "管理员"
-                log_admin_login()
-                st.rerun()
-            else:
-                st.error("密码错误")
-    
-    st.stop()  # 没登录就停在这里
+    st.stop()
 
-# ========== 显示当前用户 ==========
-st.sidebar.success(f"当前登录：{st.session_state.username}")
+# ========== 显示当前密钥级别 ==========
+st.sidebar.success(f"当前密钥级别：{st.session_state.admin_level}")
 
-# ========== 普通用户查看自己的登录记录 ==========
-if st.session_state.access_level == "user":
+# ========== 密钥A：只能看普通信息 ==========
+if st.session_state.admin_level == "A":
     with st.sidebar:
-        if st.button("📊 查看我的登录记录"):
-            if os.path.exists("user_logins.csv"):
-                df = pd.read_csv("user_logins.csv")
+        st.markdown("### 📊 普通统计")
+        
+        if st.button("👥 查看访客记录"):
+            if os.path.exists("logins.csv"):
+                df = pd.read_csv("logins.csv")
                 st.dataframe(df)
-                st.info(f"总登录次数：{len(df)} 次")
-                
-                # 统计在哪些电脑登录过
-                devices = df.groupby(["device", "public_ip", "city"]).size().reset_index(name="次数")
-                st.markdown("### 💻 登录过的设备")
-                st.dataframe(devices)
+                st.info(f"总访客：{len(df)} 次")
             else:
-                st.info("暂无记录")
+                st.info("暂无数据")
 
-# ========== 管理员查看所有信息 ==========
-if st.session_state.access_level == "admin":
+# ========== 密钥B：能看所有信息（包括管理员自己的登录记录） ==========
+if st.session_state.admin_level == "B":
     with st.sidebar:
-        st.markdown("### 📊 管理面板")
+        st.markdown("### 📊 高级管理面板")
         
-        # 查看用户登录记录
-        if st.button("👥 用户登录记录"):
-            if os.path.exists("user_logins.csv"):
-                df = pd.read_csv("user_logins.csv")
+        # 查看所有访客记录
+        if st.button("👥 所有访客记录"):
+            if os.path.exists("logins.csv"):
+                df = pd.read_csv("logins.csv")
                 st.dataframe(df)
-                st.info(f"用户总登录：{len(df)} 次")
-                
-                # 统计用户分布
-                st.markdown("### 📍 用户位置分布")
-                location_stats = df.groupby(["country", "city"]).size().reset_index(name="访问次数")
-                st.dataframe(location_stats)
-            else:
-                st.info("暂无用户记录")
+                st.info(f"总访客：{len(df)} 次")
         
-        # 查看管理员登录记录
-        if st.button("👑 管理员登录记录"):
+        # 查看管理员登录记录（密钥A和密钥B的登录历史）
+        if st.button("🔑 管理员登录记录"):
             if os.path.exists("admin_logins.csv"):
                 df = pd.read_csv("admin_logins.csv")
                 st.dataframe(df)
-                st.info(f"管理员登录：{len(df)} 次")
-            else:
-                st.info("暂无管理员记录")
+                st.info(f"管理员登录次数：{len(df)} 次")
+                
+                # 统计密钥A和密钥B的使用情况
+                level_stats = df.groupby("level").size().reset_index(name="次数")
+                st.markdown("### 密钥使用统计")
+                st.dataframe(level_stats)
         
-        # 下载所有数据
+        # 位置分布
+        if st.button("📍 位置分布"):
+            if os.path.exists("logins.csv"):
+                df = pd.read_csv("logins.csv")
+                location_stats = df.groupby(["country", "city"]).size().reset_index(name="访问次数")
+                st.dataframe(location_stats)
+        
+        # 设备统计
+        if st.button("💻 设备统计"):
+            if os.path.exists("logins.csv"):
+                df = pd.read_csv("logins.csv")
+                device_stats = df.groupby("device").size().reset_index(name="次数").head(20)
+                st.dataframe(device_stats)
+        
         st.markdown("---")
         if st.button("📥 下载所有数据"):
-            if os.path.exists("user_logins.csv"):
-                df_user = pd.read_csv("user_logins.csv")
-                st.download_button("下载用户登录记录", df_user.to_csv(index=False).encode(), "user_logins.csv")
+            if os.path.exists("logins.csv"):
+                df = pd.read_csv("logins.csv")
+                csv = df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button("下载访客记录.csv", csv, "logins.csv", "text/csv")
+            
             if os.path.exists("admin_logins.csv"):
                 df_admin = pd.read_csv("admin_logins.csv")
-                st.download_button("下载管理员登录记录", df_admin.to_csv(index=False).encode(), "admin_logins.csv")
-
-# ========== 退出登录 ==========
-with st.sidebar:
-    st.markdown("---")
-    if st.button("🚪 退出登录"):
-        st.session_state.access_level = None
-        st.session_state.username = None
-        st.rerun()
+                csv_admin = df_admin.to_csv(index=False).encode("utf-8-sig")
+                st.download_button("下载管理员登录记录.csv", csv_admin, "admin_logins.csv", "text/csv")
 
 # ========== 下面是你原来的代码 ==========
 # ... 你的 main() 函数和所有其他代码 ...
