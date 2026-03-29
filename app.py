@@ -364,10 +364,9 @@ def main():
     # 设置 matplotlib 字体
     plt.rcParams['font.sans-serif'] = ['SimHei']
     plt.rcParams['axes.unicode_minus'] = False
-
+    show_birthday_surprise()
     # 页面配置
     st.set_page_config(page_title="Mini ML App", layout="wide")
-    show_birthday_surprise()
     st.write("The best ot data times, the worst of data times.--Tinpot author")
     st.write("The stars must be aligned tonight.--User 0")
     st.write("星光今夜交相辉映。——用户0")
