@@ -54,15 +54,59 @@ from utils.model_utils import (
     predict_with_trained_classification_model
 )
 
-def log_visitor():
-    """记录访客信息"""
+def get_public_ip():
+    """获取访客的真实公网IP"""
     try:
+        # 方法1：从请求头获取（Streamlit Cloud会传递真实IP）
         headers = st.context.headers
+        ip = headers.get("X-Forwarded-For", "")
+        if ip and not ip.startswith("192.168") and not ip.startswith("10."):
+            return ip.split(",")[0].strip()
+        
+        # 方法2：调用外部API获取公网IP
+        response = requests.get("https://api.ipify.org", timeout=3)
+        if response.status_code == 200:
+            return response.text
+    except:
+        pass
+    return "unknown"
+
+def get_ip_location(ip):
+    """根据公网IP查询地理位置"""
+    if ip == "unknown" or ip.startswith(("192.168", "10.", "172.")):
+        return {"country": "内网IP", "city": "无法定位", "isp": "局域网"}
+    
+    try:
+        # 使用免费的ip-api.com，无需注册
+        response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,lat,lon", timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("status") == "success":
+                return {
+                    "country": data.get("country", "未知"),
+                    "city": data.get("city", "未知"),
+                    "isp": data.get("isp", "未知"),
+                    "lat": data.get("lat", ""),
+                    "lon": data.get("lon", "")
+                }
+    except:
+        pass
+    return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
+
+# ========== 访客记录 ==========
+def log_visitor():
+    """记录访客信息（包含真实地理位置）"""
+    try:
+        public_ip = get_public_ip()
+        location = get_ip_location(public_ip)
+        
         visitor_info = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "ip": headers.get("X-Forwarded-For", "unknown"),
-            "country": headers.get("X-Client-Geo-Location", "unknown"),
-            "device": headers.get("User-Agent", "unknown")[:150]
+            "public_ip": public_ip,
+            "country": location["country"],
+            "city": location["city"],
+            "isp": location["isp"],
+            "device": st.context.headers.get("User-Agent", "unknown")[:150]
         }
         
         log_file = "visitors.csv"
@@ -73,8 +117,13 @@ def log_visitor():
             df_new = pd.concat([df_old, df_new], ignore_index=True)
         
         df_new.to_csv(log_file, index=False)
-    except:
-        pass  # 本地运行会报错，忽略
+    except Exception as e:
+        pass  # 静默失败，不影响用户体验
+
+# 只记录一次（每个会话）
+if "visitor_logged" not in st.session_state:
+    st.session_state.visitor_logged = True
+    log_visitor()
 
 # 只记录一次（每个会话）
 if "visitor_logged" not in st.session_state:
