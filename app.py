@@ -5,6 +5,9 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+from streamlit_javascript import st_javascript
+
+
 
 font_url = "https://github.com/adobe-fonts/source-han-sans/raw/release/OTF/SimplifiedChinese/SourceHanSansSC-Regular.otf"
 font_path = "SourceHanSansSC-Regular.otf"
@@ -58,29 +61,21 @@ import requests
 
 # ========== 1. 通过前端JavaScript获取真实的设备信息 ==========
 def get_public_ip():
-    """通过外部API获取公网IP - 最可靠的方法"""
-    # 方法1：ipify（最稳定）
+    """通过浏览器前端获取更接近访客真实公网IP"""
     try:
-        response = requests.get("https://api.ipify.org", timeout=5)
-        if response.status_code == 200:
-            ip = response.text.strip()
-            if ip and ip != "unknown":
-                return ip
-    except:
+        ip = st_javascript("""
+        await fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => data.ip)
+        """)
+        
+        if ip and isinstance(ip, str) and ip.strip():
+            return ip.strip()
+    except Exception:
         pass
-    
-    # 方法2：ip-api备用
-    try:
-        response = requests.get("http://ip-api.com/json/?fields=query", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            ip = data.get("query", "")
-            if ip:
-                return ip
-    except:
-        pass
-    
+
     return "unknown"
+
 
 # ========== 2. 获取地理位置 ==========
 def get_ip_location(ip):
@@ -103,31 +98,27 @@ def get_ip_location(ip):
 
 # ========== 3. 获取设备信息（通过前端JavaScript） ==========
 def get_device_info():
-    """通过URL参数获取真实的User-Agent"""
-    # 检查是否已经有设备信息
-    if "user_agent" in st.session_state:
-        return st.session_state.user_agent
-    
-    # 检查URL参数中是否有ua
-    query_params = st.query_params
-    if "ua" in query_params:
-        ua = query_params["ua"]
-        st.session_state.user_agent = ua
-        # 清除URL参数，避免刷新时重复
-        st.query_params.clear()
-        return ua
-    
-    # 如果没有，注入JS获取
-    js_code = """
-    <script>
-        const userAgent = navigator.userAgent;
-        const url = new URL(window.location.href);
-        url.searchParams.set('ua', userAgent);
-        window.location.href = url.toString();
-    </script>
-    """
-    st.components.v1.html(js_code, height=0)
-    return "pending"
+    """通过前端 JavaScript 直接获取设备信息"""
+    try:
+        user_agent = st_javascript("await navigator.userAgent")
+        platform = st_javascript("await navigator.platform")
+        language = st_javascript("await navigator.language")
+        screen_width = st_javascript("await screen.width")
+        screen_height = st_javascript("await screen.height")
+
+        if user_agent:
+            device_info = {
+                "user_agent": str(user_agent),
+                "platform": str(platform) if platform else "",
+                "language": str(language) if language else "",
+                "screen": f"{screen_width}x{screen_height}" if screen_width and screen_height else ""
+            }
+            return device_info
+    except Exception:
+        pass
+
+    return None
+
 
 # ========== 4. 记录普通访客 ==========
 def log_visitor():
@@ -135,8 +126,9 @@ def log_visitor():
     try:
         # 获取设备信息（可能返回pending）
         device = get_device_info()
-        if device == "pending":
-            return  # 等待页面刷新后重新记录
+        if not device or not device.get("user_agent"):
+            return
+
         
         # 获取IP和位置
         public_ip = get_public_ip()
@@ -149,7 +141,11 @@ def log_visitor():
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": device[:200]  # User-Agent
+            "device": device["user_agent"][:200],
+            "platform": device.get("platform", ""),
+            "language": device.get("language", ""),
+            "screen": device.get("screen", "")
+  # User-Agent
         }
         
         # 保存到CSV
@@ -171,8 +167,9 @@ def log_admin(level):
     """记录管理员登录"""
     try:
         device = get_device_info()
-        if device == "pending":
+        if not device or not device.get("user_agent"):
             return
+
         
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
@@ -184,7 +181,11 @@ def log_admin(level):
             "country": location["country"],
             "city": location["city"],
             "isp": location["isp"],
-            "device": device[:200]
+            "device": device["user_agent"][:200],
+            "platform": device.get("platform", ""),
+            "language": device.get("language", ""),
+            "screen": device.get("screen", "")
+
         }
         
         log_file = "admin_logins.csv"
