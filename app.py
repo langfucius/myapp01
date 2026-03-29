@@ -297,6 +297,25 @@ def get_base_path():
         return sys._MEIPASS
     else:
         return os.path.dirname(os.path.abspath(__file__))
+def show_birthday_surprise():
+    beijing_tz = pytz.timezone("Asia/Shanghai")
+    now = datetime.now(beijing_tz)
+
+    if now.month == 5 and now.day == 17:
+        st.balloons()
+
+        if os.path.exists("birthday.mp3"):
+            with open("birthday.mp3", "rb") as f:
+                audio_bytes = f.read()
+            st.audio(audio_bytes, format="audio/mp3", autoplay=True, loop=True)
+            st.caption("如果生日歌没有自动播放，请手动点击播放器播放。")
+        else:
+            st.warning("未找到 birthday.mp3，无法播放生日歌。")
+
+        st.success("5月17日生日快乐！")
+        st.info("愿星辰指引你的方向，愿未来如你所愿，二十岁生日快乐呀!-- 献给User 0")
+        st.info("I will come.")
+        st.snow()
 
 
 # ====================== 工具函数 ======================
@@ -348,26 +367,7 @@ def main():
 
     # 页面配置
     st.set_page_config(page_title="Mini ML App", layout="wide")
-
-
-# 北京时间5月17日祝福
-
-
-    st.title("Mini ML Lab")
-    beijing_tz = pytz.timezone('Asia/Shanghai')
-    now = datetime.now(beijing_tz)
-    if now.month == 5 and now.day == 17:
-        st.balloons()
-        
-        # 播放本地生日歌
-        with open("birthday.mp3", "rb") as f:
-            audio_bytes = f.read()
-        st.audio(audio_bytes, format="audio/mp3", autoplay=True, loop=True)
-        
-        st.success("5月17日生日快乐！")
-        st.info("愿星辰指引你的方向，愿未来如你所愿，二十岁生日快乐呀!-- 献给User 0")
-        st.info("I will come.")
-        st.snow()
+    show_birthday_surprise()
     st.write("The best ot data times, the worst of data times.--Tinpot author")
     st.write("The stars must be aligned tonight.--User 0")
     st.write("星光今夜交相辉映。——用户0")
