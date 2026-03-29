@@ -206,8 +206,10 @@ if "visitor_logged" not in st.session_state:
 
 
 # ========== 管理员登录入口（侧边栏） ==========
-KEY_A = "1117"   # 密钥A：普通管理权限（只能看普通访客）
-KEY_B = "050508"   # 密钥B：高级管理权限（能看普通访客 + 所有管理员登录记录）
+
+KEY_A = st.secrets.get("KEY_A", "")
+KEY_B = st.secrets.get("KEY_B", "")
+
 
 if "admin_level" not in st.session_state:
     st.session_state.admin_level = None
