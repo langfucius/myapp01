@@ -54,7 +54,55 @@ from utils.model_utils import (
     predict_with_trained_classification_model
 )
 
+def log_visitor():
+    """记录访客信息"""
+    try:
+        headers = st.context.headers
+        visitor_info = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ip": headers.get("X-Forwarded-For", "unknown"),
+            "country": headers.get("X-Client-Geo-Location", "unknown"),
+            "device": headers.get("User-Agent", "unknown")[:150]
+        }
+        
+        log_file = "visitors.csv"
+        df_new = pd.DataFrame([visitor_info])
+        
+        if os.path.exists(log_file):
+            df_old = pd.read_csv(log_file)
+            df_new = pd.concat([df_old, df_new], ignore_index=True)
+        
+        df_new.to_csv(log_file, index=False)
+    except:
+        pass  # 本地运行会报错，忽略
 
+# 只记录一次（每个会话）
+if "visitor_logged" not in st.session_state:
+    st.session_state.visitor_logged = True
+    log_visitor()
+
+# ========== 管理员查看（需要密码） ==========
+def show_visitors():
+    if os.path.exists("visitors.csv"):
+        df = pd.read_csv("visitors.csv")
+        st.dataframe(df)
+        st.info(f"总访问：{len(df)} 次")
+        
+        # 下载按钮
+        csv = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("📥 下载访客记录", csv, "visitors.csv", "text/csv")
+    else:
+        st.info("暂无访客数据")
+
+# 侧边栏管理员入口
+with st.sidebar:
+    with st.expander("🔒 管理员"):
+        pwd = st.text_input("密码", type="password", key="admin_pwd")
+        if pwd == "20260328":  # 改成你自己的密码
+            st.success("验证成功")
+            show_visitors()
+        elif pwd:
+            st.error("密码错误")
 # ====================== 路径处理（支持打包） ======================
 def get_base_path():
     """获取应用基础路径（支持打包后）"""
