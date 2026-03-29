@@ -59,6 +59,7 @@ import pandas as pd
 import os
 from datetime import datetime
 import requests
+# ========== 获取公网IP和地理位置 ==========
 def get_public_ip():
     try:
         headers = st.context.headers
@@ -91,16 +92,16 @@ def get_ip_location(ip):
         pass
     return {"country": "定位失败", "city": "定位失败", "isp": "定位失败"}
 
-# ========== 记录登录 ==========
-def log_login(level):
-    """记录管理员登录"""
+# ========== 记录普通访客 ==========
+def log_visitor():
+    """记录普通访客（不需要密码）"""
     try:
         public_ip = get_public_ip()
         location = get_ip_location(public_ip)
         
-        login_info = {
+        visitor_info = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "level": level,  # A 或 B
+            "type": "普通访客",
             "public_ip": public_ip,
             "country": location["country"],
             "city": location["city"],
@@ -108,8 +109,8 @@ def log_login(level):
             "device": st.context.headers.get("User-Agent", "unknown")[:150]
         }
         
-        log_file = "admin_logins.csv"
-        df_new = pd.DataFrame([login_info])
+        log_file = "visitors.csv"
+        df_new = pd.DataFrame([visitor_info])
         
         if os.path.exists(log_file):
             df_old = pd.read_csv(log_file)
@@ -119,97 +120,118 @@ def log_login(level):
     except:
         pass
 
-# ========== 登录界面 ==========
-KEY_A = "123456"   # 密钥A：普通权限
-KEY_B = "654321"   # 密钥B：高级权限（能看到管理员自己的登录记录）
+# ========== 记录管理员登录 ==========
+def log_admin(level):
+    """记录管理员登录"""
+    try:
+        public_ip = get_public_ip()
+        location = get_ip_location(public_ip)
+        
+        admin_info = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "type": f"管理员(密钥{level})",
+            "public_ip": public_ip,
+            "country": location["country"],
+            "city": location["city"],
+            "isp": location["isp"],
+            "device": st.context.headers.get("User-Agent", "unknown")[:150]
+        }
+        
+        log_file = "admin_logins.csv"  # 单独记录管理员登录
+        df_new = pd.DataFrame([admin_info])
+        
+        if os.path.exists(log_file):
+            df_old = pd.read_csv(log_file)
+            df_new = pd.concat([df_old, df_new], ignore_index=True)
+        
+        df_new.to_csv(log_file, index=False)
+    except:
+        pass
+
+# ========== 普通访客自动记录 ==========
+if "visitor_logged" not in st.session_state:
+    st.session_state.visitor_logged = True
+    log_visitor()
+
+# ========== 管理员登录入口（侧边栏） ==========
+KEY_A = "1117"   # 密钥A：普通管理权限（只能看普通访客）
+KEY_B = "050508"   # 密钥B：高级管理权限（能看普通访客 + 所有管理员登录记录）
 
 if "admin_level" not in st.session_state:
     st.session_state.admin_level = None
 
-if st.session_state.admin_level is None:
-    st.title("🔐 管理员登录")
-    
-    pwd = st.text_input("请输入密钥", type="password")
-    
-    if st.button("登录"):
-        if pwd == KEY_A:
-            st.session_state.admin_level = "A"
-            log_login("A")
+with st.sidebar:
+    st.markdown("---")
+    if st.session_state.admin_level is None:
+        st.markdown("### 🔐 管理员登录")
+        pwd = st.text_input("请输入密钥", type="password", key="admin_pwd")
+        if st.button("登录", key="admin_login_btn"):
+            if pwd == KEY_A:
+                st.session_state.admin_level = "A"
+                log_admin("A")
+                st.rerun()
+            elif pwd == KEY_B:
+                st.session_state.admin_level = "B"
+                log_admin("B")
+                st.rerun()
+            elif pwd:
+                st.error("密钥错误")
+    else:
+        st.success(f"管理员(密钥{st.session_state.admin_level})已登录")
+        if st.button("🚪 退出管理"):
+            st.session_state.admin_level = None
             st.rerun()
-        elif pwd == KEY_B:
-            st.session_state.admin_level = "B"
-            log_login("B")
-            st.rerun()
-        elif pwd:
-            st.error("密钥错误")
-    
-    st.stop()
 
-# ========== 显示当前密钥级别 ==========
-st.sidebar.success(f"当前密钥级别：{st.session_state.admin_level}")
-
-# ========== 密钥A：只能看普通信息 ==========
-if st.session_state.admin_level == "A":
+# ========== 管理员面板 ==========
+if st.session_state.admin_level is not None:
     with st.sidebar:
-        st.markdown("### 📊 普通统计")
+        st.markdown("### 📊 管理面板")
         
-        if st.button("👥 查看访客记录"):
-            if os.path.exists("logins.csv"):
-                df = pd.read_csv("logins.csv")
-                st.dataframe(df)
-                st.info(f"总访客：{len(df)} 次")
-            else:
-                st.info("暂无数据")
-
-# ========== 密钥B：能看所有信息（包括管理员自己的登录记录） ==========
-if st.session_state.admin_level == "B":
-    with st.sidebar:
-        st.markdown("### 📊 高级管理面板")
-        
-        # 查看所有访客记录
-        if st.button("👥 所有访客记录"):
-            if os.path.exists("logins.csv"):
-                df = pd.read_csv("logins.csv")
+        # 查看所有普通访客记录
+        if st.button("👥 查看普通访客记录"):
+            if os.path.exists("visitors.csv"):
+                df = pd.read_csv("visitors.csv")
                 st.dataframe(df)
                 st.info(f"总访客：{len(df)} 次")
         
-        # 查看管理员登录记录（密钥A和密钥B的登录历史）
-        if st.button("🔑 管理员登录记录"):
-            if os.path.exists("admin_logins.csv"):
-                df = pd.read_csv("admin_logins.csv")
-                st.dataframe(df)
-                st.info(f"管理员登录次数：{len(df)} 次")
-                
-                # 统计密钥A和密钥B的使用情况
-                level_stats = df.groupby("level").size().reset_index(name="次数")
-                st.markdown("### 密钥使用统计")
-                st.dataframe(level_stats)
-        
-        # 位置分布
-        if st.button("📍 位置分布"):
-            if os.path.exists("logins.csv"):
-                df = pd.read_csv("logins.csv")
-                location_stats = df.groupby(["country", "city"]).size().reset_index(name="访问次数")
-                st.dataframe(location_stats)
-        
-        # 设备统计
-        if st.button("💻 设备统计"):
-            if os.path.exists("logins.csv"):
-                df = pd.read_csv("logins.csv")
-                device_stats = df.groupby("device").size().reset_index(name="次数").head(20)
-                st.dataframe(device_stats)
-        
-        st.markdown("---")
-        if st.button("📥 下载所有数据"):
-            if os.path.exists("logins.csv"):
-                df = pd.read_csv("logins.csv")
-                csv = df.to_csv(index=False).encode("utf-8-sig")
-                st.download_button("下载访客记录.csv", csv, "logins.csv", "text/csv")
+        # 密钥B 还能看管理员登录记录
+        if st.session_state.admin_level == "B":
+            st.markdown("---")
             
-            if os.path.exists("admin_logins.csv"):
-                df_admin = pd.read_csv("admin_logins.csv")
-                csv_admin = df_admin.to_csv(index=False).encode("utf-8-sig")
-                st.download_button("下载管理员登录记录.csv", csv_admin, "admin_logins.csv", "text/csv")
+            if st.button("🔑 查看所有管理员登录记录"):
+                if os.path.exists("admin_logins.csv"):
+                    df = pd.read_csv("admin_logins.csv")
+                    st.dataframe(df)
+                    st.info(f"管理员登录次数：{len(df)} 次")
+                    
+                    # 统计密钥A和密钥B的使用情况
+                    level_stats = df.groupby("type").size().reset_index(name="次数")
+                    st.markdown("### 密钥使用统计")
+                    st.dataframe(level_stats)
+            
+            if st.button("📍 位置分布"):
+                if os.path.exists("visitors.csv"):
+                    df = pd.read_csv("visitors.csv")
+                    location_stats = df.groupby(["country", "city"]).size().reset_index(name="次数")
+                    st.dataframe(location_stats)
+            
+            if st.button("💻 设备统计"):
+                if os.path.exists("visitors.csv"):
+                    df = pd.read_csv("visitors.csv")
+                    device_stats = df.groupby("device").size().reset_index(name="次数").head(20)
+                    st.dataframe(device_stats)
+            
+            st.markdown("---")
+            if st.button("📥 下载所有数据"):
+                if os.path.exists("visitors.csv"):
+                    df = pd.read_csv("visitors.csv")
+                    csv = df.to_csv(index=False).encode("utf-8-sig")
+                    st.download_button("下载普通访客记录.csv", csv, "visitors.csv", "text/csv")
+                
+                if os.path.exists("admin_logins.csv"):
+                    df_admin = pd.read_csv("admin_logins.csv")
+                    csv_admin = df_admin.to_csv(index=False).encode("utf-8-sig")
+                    st.download_button("下载管理员登录记录.csv", csv_admin, "admin_logins.csv", "text/csv")
 
 # ========== 下面是你原来的代码 ==========
 # ... 你的 main() 函数和所有其他代码 ...
