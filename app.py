@@ -177,7 +177,7 @@ with st.sidebar:
             elif pwd:
                 st.error("密钥错误")
     else:
-        st.success(f"管理员(密钥{st.session_state.admin_level})已登录")
+        st.success(f"管理员(密钥)已登录")
         if st.button("🚪 退出管理"):
             st.session_state.admin_level = None
             st.rerun()
